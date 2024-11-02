@@ -105,3 +105,59 @@ class TestExample(Test):
             .status(200) \
             .time() \
             .less_than(2000)
+    def test_post_schema(self):
+        """Test POST response against schema"""
+        post_schema = {
+            "type": "object",
+            "required": ["id", "title", "body", "userId"],
+            "properties": {
+                "id": {"type": "integer"},
+                "title": {"type": "string"},
+                "body": {"type": "string"},
+                "userId": {"type": "integer"}
+            }
+        }
+        
+        response = self.request.to("/posts/1").get()
+        
+        Expect(response) \
+            .status(200) \
+            .body() \
+            .matches_schema(post_schema)
+            
+    def test_comments_schema(self):
+        """Test array response with item schema"""
+        comment_schema = {
+            "type": "object",
+            "required": ["id", "email", "body"],
+            "properties": {
+                "id": {"type": "integer"},
+                "email": {"type": "string", "format": "email"},
+                "body": {"type": "string"}
+            }
+        }
+        
+        response = self.request.to("/posts/1/comments").get()
+        
+        Expect(response) \
+            .status(200) \
+            .body() \
+            .has_array_items(comment_schema)
+            
+    def test_type_validation(self):
+        """Test simple type validation"""
+        response = self.request.to("/posts/1").get()
+        
+        Expect(response) \
+            .body("id").has_type("integer") \
+            .body("title").has_type("string") \
+            .body("userId").has_type("integer")
+        
+    def test_schema_from_file(self):
+        """Test loading schema from file"""
+        response = self.request.to("/posts/1").get()
+        
+        Expect(response) \
+            .status(200) \
+            .body() \
+            .matches_schema("schemas/post.json")
