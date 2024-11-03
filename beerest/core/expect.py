@@ -1,5 +1,7 @@
-from typing import Any, Optional, Callable
+from typing import Any, Dict, Optional, Callable, Union
 from dataclasses import dataclass
+
+from beerest.core.schema import SchemaValidator
 from .response import Response
 import jsonpath_ng
 import re
@@ -140,3 +142,29 @@ class Expect:
             message,
             self._current_value
         )
+    
+    def matches_schema(self, schema: Union[Dict[str, Any], str]) -> 'Expect':
+        validator = SchemaValidator()
+        
+        if isinstance(schema, str):
+            schema = validator.load_schema(schema)
+        
+        result = validator.validate(self._current_value, schema)
+        
+        return self._add_check(
+            result.is_valid,
+            f"schema validation: {result.error_messages if not result.is_valid else ''}",
+            self._current_value,
+            schema
+        )
+
+    def has_type(self, expected_type: str) -> 'Expect':
+        schema = {"type": expected_type}
+        return self.matches_schema(schema)
+
+    def has_array_items(self, item_schema: Dict[str, Any]) -> 'Expect':
+        schema = {
+            "type": "array",
+            "items": item_schema
+        }
+        return self.matches_schema(schema)
