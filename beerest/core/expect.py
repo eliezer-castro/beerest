@@ -1,5 +1,7 @@
-from typing import Any, Dict, Optional, Callable, Union
-from dataclasses import dataclass
+from typing import Any, Dict, Callable, Union, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+
 
 from beerest.core.schema import SchemaValidator
 from .response import Response
@@ -12,31 +14,97 @@ class Check:
     message: str
     actual: Any
     expected: Any = None
+    context: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.now)
+
+class ExpectError(Exception):
+    def __init__(self, message: str, checks: List[Check], response: Optional['Response'] = None):
+        self.message = message
+        self.checks = checks
+        self.response = response
+        super().__init__(self.format_message())
+    
+    def format_message(self) -> str:
+        failed_checks = [c for c in self.checks if not c.passed]
+        
+        divider = "━" * 100
+        bullet = "•"
+        arrow = "→"
+        
+       
+        import inspect
+        current_frame = inspect.currentframe()
+        test_info = ""
+        while current_frame:
+            function_name = current_frame.f_code.co_name
+            if function_name.startswith('test_'):
+                filename = current_frame.f_code.co_filename
+                line_no = current_frame.f_lineno
+                test_info = f"Test: {function_name}\nFile: {filename}:{line_no}"
+                break
+            current_frame = current_frame.f_back
+        
+        message_parts = [
+            "\n🔴 TEST ASSERTION FAILED",
+            divider,
+            ""
+        ]
+
+        if test_info:
+            message_parts.extend([
+                "📋 Test Information:",
+                f"   {bullet} {test_info}",
+                ""
+            ])
+        
+        if self.response:
+            message_parts.extend([
+                "📡 Response Information:",
+                f"   {bullet} Status: {self.response.status_code}",
+            ])
+            
+            if hasattr(self.response, 'elapsed_time'):
+                message_parts.append(f"   {bullet} Time: {self.response.elapsed_time}ms")
+            
+           
+            if hasattr(self.response, 'json_data') and self.response.json_data:
+                json_preview = str(self.response.json_data)
+                if len(json_preview) > 150:
+                    json_preview = json_preview[:150] + "..."
+                message_parts.append(f"   {bullet} Body: {json_preview}")
+            
+            message_parts.append("")
+        
+        for i, check in enumerate(failed_checks, 1):
+           
+            
+            message_parts.extend([
+                f"❌ Failure:",
+                f"   {arrow} Type: {check.message}",
+                f"   {arrow} Expected: {check.expected}",
+                f"   {arrow} Received: {check.actual}",
+                f"   {arrow} Time: {check.timestamp.strftime('%H:%M:%S.%f')[:-3]}",
+                ""
+            ])
+        
+        message_parts.append(divider)
+        
+        return "\n".join(message_parts)
 
 class Expect:
-    def __init__(self, response: Response, context: str = None):
+    def __init__(self, response: 'Response', context: str = None):
         self.response = response
         self.checks: list[Check] = []
         self.context = context
         self._current_value = None
-        
-    def that(self, context: str = None) -> 'Expect':
-        self.context = context
-        return self
-        
-    def all_passed(self) -> bool:
-        return all(check.passed for check in self.checks)
-        
-    def get_failures(self) -> list[str]:
-        return [
-            f"{check.message}: expected {check.expected}, got {check.actual}"
-            for check in self.checks if not check.passed
-        ]
-
+        self._current_path = None
+        self._soft_assert = False
+    
     def _add_check(self, passed: bool, message: str, actual: Any, expected: Any = None):
-        if self.context:
-            message = f"{self.context}: {message}"
-        self.checks.append(Check(passed, message, actual, expected))
+        check = Check(passed, message, actual, expected, self.context)
+        self.checks.append(check)
+        if not passed:
+            raise ExpectError("Assertion failed", [check], self.response)
         return self
 
     def status(self, code: int = None) -> 'Expect':
