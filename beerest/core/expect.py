@@ -45,6 +45,7 @@ class Expect:
             return self.equals(code)
         return self
         
+        
     def body(self, path: str = None) -> 'Expect':
         if path:
             if not self.response.json_data:
@@ -78,6 +79,14 @@ class Expect:
       if not passed:
           raise AssertionError(f"Expected {expected}, but got {self._current_value}")
       return self
+    
+    def is_not_empty(self) -> 'Expect':
+        return self._add_check(
+        bool(self._current_value),
+        "empty check",
+        self._current_value,
+        "non-empty value"
+    )
 
         
     def contains(self, expected: Any) -> 'Expect':
@@ -134,6 +143,14 @@ class Expect:
             "keys presence check",
             set(self._current_value.keys()),
             set(keys)
+        )
+    
+    def is_in(self, expected: Any) -> 'Expect':
+        return self._add_check(
+            self._current_value in expected,
+            "is in check",
+            self._current_value,
+            expected
         )
 
     def satisfies(self, predicate: Callable[[Any], bool], message: str = "custom check") -> 'Expect':
